@@ -14,11 +14,6 @@ class RegistryWrapper {
 	public function set( $name, $value = null )
 	{
 
-		preg_match_all( '/(*.?)/', $value, $matches );
-
-var_dump( $matches );
-
-
 		return Registry::set( $name, $value );
 
 	}
