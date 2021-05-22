@@ -2,6 +2,8 @@
 
 namespace nathanwooten;
 
+use nathanwooten\Registry;
+
 class RegistryWrapper {
 
 	public function get( $name )
