@@ -8,7 +8,7 @@ trait RegistryTrait
 	public function getRegistry()
 	{
 
-		new RegistryWrapper;
+		return new RegistryWrapper;
 
 	}
 
