@@ -2,6 +2,8 @@
 
 namespace nathanwooten;
 
+use nathanwooten\RegistryWrapper;
+
 trait RegistryTrait
 {
 
