@@ -9,7 +9,9 @@ class Registry {
 	protected static $instance;
 
 	protected static $registry = [
-		'fs' => []
+		'al' => [],
+		'fs' => [],
+		'pg' => []
 	];
 
 	protected static $protected = [ 'fs' ];
@@ -108,8 +110,68 @@ class Registry {
 	{
 
 		$fs = static::get( 'fs' );
-		$value = $fs[ $name ];
-		return $value;
+
+		if ( array_key_exists( $name, $fs ) ) {
+			return $fs[ $name ];
+		}
+
+		throw new Exception;
+
+	}
+
+	public static function setAL( $namespace, $dir )
+	{
+
+		if ( ! is_readable( $dir ) ) {
+			throw new Exception( 'Unreadable directory' );
+		}
+
+		static::$registry[ 'al' ][ $namespace ] = $dir;
+
+	}
+
+	public static function getAL( $namespaceOrDir ) {
+
+		if ( is_readable( $namespaceOrDir ) ) {
+			$type = 'dir';
+			$dir = $namespaceOrDir;
+		} else {
+			$type = 'namespace';
+			$namespace = $namespaceOrDir;
+		}
+
+		switch ( $type ) {
+
+			case 'dir':
+
+				foreach ( static::$registry[ 'al' ] as $ns => $directory ) {
+
+					if ( $dir === $directory ) return $ns;
+				}
+				break;
+
+			case 'namespace':
+
+				if ( array_key_exists( $namespace, static::$registry[ 'al' ] ) ) {
+
+					return static::$registry[ 'al' ][ $namespace ];
+				}
+		}
+
+		throw new Exception( 'Autoloader value does not exist' );
+
+	}
+
+	public static function setPG( Page $page ) {
+
+		static::$registry[ 'pg' ][ $page->getName() ] = $page;
+
+	}
+
+	public static function getPG( $name )
+	{
+
+		return array_key_exists( $name, static::$registry[ 'pg' ] ) ? static::$registry[ 'pg' ][ $name ] : null;
 
 	}
 
