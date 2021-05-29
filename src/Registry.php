@@ -6,172 +6,204 @@ use Exception;
 
 class Registry {
 
-	protected static $instance;
+	protected $name = 'AppWrap';
 
-	protected static $registry = [
-		'al' => [],
-		'fs' => [],
-		'pg' => []
-	];
+	protected static $container = [];
+	public static $registry;
 
-	protected static $protected = [ 'fs' ];
+	protected static $type = [ 'AutoloaderPackage', 'Filesystem', 'Template' ];
 
-	public static function set( $name, $data = null ) {
+	public static function set( $name, $value = null ) {
 
-		if ( in_array( $name, static::$protected ) ) {
-			throw new Exception;
-		}
-		if ( is_string( $data ) ) {
-			preg_match_all( '/\{\{.*?\}\}/', $data, $matches );
+		static::before();
 
-			foreach ( $matches[0] as $match ) {
-				$matchName = trim( $match, '{}' );
-
-				if ( static::has( $matchName ) ) {
-					$got = static::get( $matchName );
-
-					if ( is_string( $got ) ) {
-						$data = str_replace( $match, $got, $data );
-					}
-				}
-			}
+		$args = func_get_args();
+		$type = ! isset( $args[2] ) || ! $args[2] ? static::hasTypeCheck( $value ) : $args[2];
+		if ( ! $type ) {
+			throw new Exception( 'Unknown type' );
 		}
 
-		if ( is_readable( $data ) ) {
-			return static::setFS( $name, $data );
+		if ( 'container' === $type ) {
+			static::$container[ $name ] = $value;
+			return;
 		}
 
-		if ( ! isset( static::$registry[ $name ] ) ) {
-			static::$registry[ $name ] = $data;
-		}
+		static::registry( $type )->set( $name, $value );
 
 	}
 
-	public static function get( $name )
+	public static function get( $type )
 	{
 
-		$has = static::has( $name );
-		if ( ! $has ) {
-			throw new Exception( $name . ' does not exist' );
+		$got = [];
+		foreach ( static::all() as $key => $registry ) {
+
+			if ( $type === $key ) {
+				$got[ $key ] = static::registry( $type );
+
+				break;
+			}
+
+			$name = $type;
+
+			if ( $registry->has( $name ) ) {
+				$got[ $name ] = $registry->get( $name );
+
+				break;
+			}
 		}
 
-		switch ( $has ) {
-
-			case 'base':
-				$value = static::$registry[ $name ];
-				break;
-
-			default:
-				$type = $has;
-				$value = static::$registry[ $type ][ $name ];
-				break;
+		if ( 1 === count( $got ) ) {
+			$got = current( $got );
 		}
 
-		return $value;
+		return $got;
+
+	}
+
+	public static function has( $type, $name = null )
+	{
+
+		static::before();
+
+		if ( ! array_key_exists( $type, static::registry()->all() ) ) return false;
+
+		if ( isset( $name ) ) {
+			return static::$registry->get( $type )->has( $name );
+		}
+
+		return true;
 
 	}
 
 	public static function all()
 	{
 
-		return static::$registry;
+		static::before();
+
+		static::addType();
+
+		$all = static::registry()->all();
+
+		return $all;
 
 	}
 
-	public static function has( $name )
+	public static function hasTypeCheck( $value )
 	{
 
-		if ( array_key_exists( $name, static::$registry ) ) {
-			return 'base';
-		}
+		if ( is_string( $value ) && is_readable( $value ) ) {
+			return 'Filesystem';
+		}	
 
-		foreach ( static::$protected as $type ) {
+		foreach ( static::$type as $type ) {
 
-			if ( array_key_exists( $name, static::$registry[ $type ] ) ) {
+			$qualified = 'nathanwooten\\' . $type;
+			if ( is_object( $value ) && is_a( $value, $qualified ) ) {
 				return $type;
 			}
+		}
+
+		if ( static::hasContainerType( $value ) ) {
+			$type = 'container';
+			return $type;
 		}
 
 		return false;
 
 	}
 
-	public static function setFS( $name, $readable )
+	public static function hasContainerType( $value )
 	{
 
-		if ( ! isset( static::$registry[ 'fs' ][ $name ] ) ) {
+		if (
+			! is_string( $value ) &&
+			! is_integer( $value ) &&
+				! is_array( $value ) &&
+			( ! is_object( $value ) || ! is_a( $value, 'nathanwooten\nathanwootenInterface' ) ) ) {
+			return false;
+		}
 
-			static::$registry[ 'fs' ][ $name ] = $readable;
+		return true;
+
+	}
+
+
+	public static function add( $type )
+	{
+
+		static::$registry->set( $type, static::create( $type, $type ) );
+
+		if ( ! in_array( $type, static::$type ) ) {
+
+			array_push( static::$type, $type );
 		}
 
 	}
 
-	public static function getFS( $name )
+	public static function addType()
 	{
 
-		$fs = static::get( 'fs' );
+		foreach ( static::$type as $type ) {
+			if ( ! static::registry()->has( $type ) ) {
 
-		if ( array_key_exists( $name, $fs ) ) {
-			return $fs[ $name ];
+				static::add( $type );
+			}
 		}
-
-		throw new Exception;
 
 	}
 
-	public static function setAL( $namespace, $dir )
+	public static function create( $registryName = null, string $type = null )
 	{
 
-		if ( ! is_readable( $dir ) ) {
-			throw new Exception( 'Unreadable directory' );
-		}
-
-		static::$registry[ 'al' ][ $namespace ] = $dir;
-
-	}
-
-	public static function getAL( $namespaceOrDir ) {
-
-		if ( is_readable( $namespaceOrDir ) ) {
-			$type = 'dir';
-			$dir = $namespaceOrDir;
+		if ( null === $type ) {
+			$class = __NAMESPACE__ . '\\' . 'RegistryAbstract';
 		} else {
-			$type = 'namespace';
-			$namespace = $namespaceOrDir;
+
+			$class = __NAMESPACE__ . '\\' . $type . 'Registry';
+			if ( ! class_exists( $class ) ) {
+				$class = __NAMESPACE__ . '\\' . 'RegistryAbstract';
+			}
 		}
 
-		switch ( $type ) {
+		$registry = new $class;
+		$registry->setName( $registryName );
 
-			case 'dir':
-
-				foreach ( static::$registry[ 'al' ] as $ns => $directory ) {
-
-					if ( $dir === $directory ) return $ns;
-				}
-				break;
-
-			case 'namespace':
-
-				if ( array_key_exists( $namespace, static::$registry[ 'al' ] ) ) {
-
-					return static::$registry[ 'al' ][ $namespace ];
-				}
-		}
-
-		throw new Exception( 'Autoloader value does not exist' );
+		return $registry;
 
 	}
 
-	public static function setPG( Page $page ) {
-
-		static::$registry[ 'pg' ][ $page->getName() ] = $page;
-
-	}
-
-	public static function getPG( $name )
+	public static function registry( $type = null )
 	{
 
-		return array_key_exists( $name, static::$registry[ 'pg' ] ) ? static::$registry[ 'pg' ][ $name ] : null;
+		if ( ! isset( static::$registry ) ) {
+			static::$registry = static::create();
+			static::$registry->setName( 'App' );
+		}
+		if ( is_null( $type ) ) {
+			return static::$registry;
+		}
+
+		if( ! static::$registry->has( $type ) ) {
+			static::add( $type );
+		}
+
+		return static::$registry->get( $type );
+
+	}
+
+	protected static function before()
+	{
+
+		static::registry();
+		static::addType();
+
+	}
+
+	protected function __construct()
+	{
+
+		$this->before();
 
 	}
 
@@ -179,7 +211,6 @@ class Registry {
 	{
 
 		if ( ! isset( static::$instance ) ) {
-
 			static::$instance = new static;
 		}
 
